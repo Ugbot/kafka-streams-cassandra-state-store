@@ -5,6 +5,7 @@ import dev.thriving.oss.kafka.streams.cassandra.state.store.repo.GlobalCassandra
 import dev.thriving.oss.kafka.streams.cassandra.state.store.repo.GlobalCassandraVersionedKeyValueStoreRepository;
 import dev.thriving.oss.kafka.streams.cassandra.state.store.repo.PartitionedCassandraKeyValueStoreRepository;
 import dev.thriving.oss.kafka.streams.cassandra.state.store.repo.PartitionedCassandraVersionedKeyValueStoreRepository;
+import dev.thriving.oss.kafka.streams.cassandra.state.store.schema.CassandraSchema;
 import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.streams.state.*;
 import org.apache.kafka.streams.state.internals.VersionedKeyValueToBytesStoreAdapter;
@@ -73,6 +74,7 @@ public final class CassandraStores {
     private boolean createTable = true;
     private String ddlExecutionProfile = null;
     private String dmlExecutionProfile = null;
+    private CassandraSchema schema = null; // For schema-aware stores
 
     private CassandraStores(String name, CqlSession session) {
         this.name = name;
@@ -243,6 +245,40 @@ public final class CassandraStores {
         return this;
     }
 
+    /**
+     * Configure a schema definition for the state store.
+     * <p>
+     * When a schema is provided, the store will use typed operations with full CQL types
+     * instead of generic BLOB storage. This enables better type safety, performance,
+     * and more sophisticated queries.
+     * <p>
+     * The schema must include standard columns:
+     * - partition (int) - for partitioned stores
+     * - time (timestamp) - for tracking when records were written
+     * <p>
+     * Example usage:
+     * <pre>{@code
+     * CassandraSchema schema = CassandraSchema.builder("word_count")
+     *     .addPartitionKeyColumn("partition", "int")
+     *     .addClusteringKeyColumn("word", "text")
+     *     .addColumn("count", "bigint")
+     *     .addColumn("time", "timestamp")
+     *     .build();
+     *
+     * CassandraStores.builder(session, "store-name")
+     *     .withSchema(schema)
+     *     .partitionedKeyValueStore()
+     * }</pre>
+     *
+     * @param schema the Cassandra schema definition
+     * @return itself
+     */
+    public CassandraStores withSchema(CassandraSchema schema) {
+        assert schema != null : "schema cannot be null";
+        this.schema = schema;
+        return this;
+    }
+
 
     /**
      * Creates a persistent {@link KeyValueBytesStoreSupplier}.
@@ -272,6 +308,16 @@ public final class CassandraStores {
      *         to build a persistent key-value store
      */
     public KeyValueBytesStoreSupplier partitionedKeyValueStore() {
+        if (schema != null) {
+            LOG.info("Creating schema-aware partitioned key-value store for '{}'", name);
+            return createSchemaAwarePartitionedStore();
+        } else {
+            LOG.debug("Creating legacy BLOB-based partitioned key-value store for '{}'", name);
+            return createLegacyPartitionedStore();
+        }
+    }
+
+    private KeyValueBytesStoreSupplier createLegacyPartitionedStore() {
         return new KeyValueBytesStoreSupplier() {
             @Override
             public String name() {
@@ -297,6 +343,45 @@ public final class CassandraStores {
             }
         };
     }
+
+    private KeyValueBytesStoreSupplier createSchemaAwarePartitionedStore() {
+        return new KeyValueBytesStoreSupplier() {
+            @Override
+            public String name() {
+                return name;
+            }
+
+            @Override
+            public KeyValueStore<Bytes, byte[]> get() {
+                try {
+                    // Use the factory to create the appropriate typed repository
+                    var typedRepository = dev.thriving.oss.kafka.streams.cassandra.state.store.repo.typed.TypedRepositoryFactory.createRepository(
+                            session,
+                            resolveTableName(),
+                            schema,
+                            createTable,
+                            tableOptions,
+                            ddlExecutionProfile,
+                            dmlExecutionProfile);
+
+                    LOG.info("Created typed repository for schema-aware store: {}", name);
+                    return new TypedCassandraKeyValueStore<>(name, typedRepository, isCountAllEnabled);
+
+                } catch (UnsupportedOperationException e) {
+                    // Fallback to legacy store for unsupported schema types
+                    LOG.warn("Schema type not supported: {}. Falling back to legacy BLOB store. Error: {}",
+                            schema.getTableName(), e.getMessage());
+                    return createLegacyPartitionedStore().get();
+                }
+            }
+
+            @Override
+            public String metricsScope() {
+                return METRICS_SCOPE;
+            }
+        };
+    }
+
 
     /**
      * Creates a persistent {@link KeyValueBytesStoreSupplier}.

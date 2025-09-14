@@ -126,16 +126,649 @@ Enhancement suggestions are tracked as [GitHub issues](https://github.com/thrivi
 <!-- You might want to create an issue template for enhancement suggestions that can be used as a guide and that defines the structure of the information to be included. If you do so, reference it here in the description. -->
 
 ### Your First Code Contribution
-<!-- TODO
-include Setup of env, IDE and typical getting started instructions?
 
--->
+#### Development Environment Setup
+
+1. **Prerequisites**
+   - Java 17+ (we use modern Java features)
+   - Docker & Docker Compose (for testing)
+   - Git
+   - Your favorite IDE (IntelliJ IDEA recommended for modern Java support)
+
+2. **Clone and Setup**
+   ```bash
+   git clone https://github.com/thriving-dev/kafka-streams-cassandra-state-store.git
+   cd kafka-streams-cassandra-state-store
+   ./gradlew build  # This will download all dependencies
+   ```
+
+3. **IDE Configuration**
+   - Set Java SDK to Java 17+
+   - Enable modern Java language features
+   - Configure code style for modern Java (text blocks, records, etc.)
+
+#### Understanding the Architecture
+
+##### Core Components
+- **`CassandraSchema`**: Schema definition with modern records
+- **`ColumnDefinition`**: Immutable column metadata
+- **`SchemaValidation`**: Runtime validation logic
+- **`TypedCassandraRepository`**: Type-safe repository implementations
+- **`CassandraStores.Builder`**: Fluent API for store creation
+
+##### Modern Java Features Used
+- **Records** for immutable data structures
+- **Text Blocks** for readable SQL generation
+- **Switch Expressions** for type mapping
+- **Pattern Matching** for validation
+- **Stream API** for functional data processing
+
+#### Development Workflow
+
+1. **Create a Feature Branch**
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
+
+2. **Write Tests First** (TDD approach)
+   ```java
+   // Example: Test for new schema template
+   @Test
+   void shouldCreateValidProductCatalogSchema() {
+       CassandraSchema schema = SchemaTemplates.productCatalogSchema("products");
+
+       assertThat(schema.getTableName()).isEqualTo("products");
+       assertThat(schema.hasColumn("product_id")).isTrue();
+       // ... more assertions
+   }
+   ```
+
+3. **Implement the Feature**
+   - Follow modern Java patterns
+   - Use records for immutable data
+   - Use text blocks for multi-line strings
+   - Use switch expressions where applicable
+
+4. **Run Tests**
+   ```bash
+   # Run unit tests
+   ./gradlew test
+
+   # Run integration tests (requires Docker)
+   ./gradlew intTest
+
+   # Run specific test class
+   ./gradlew test --tests "*SchemaValidationTest*"
+   ```
+
+5. **Update Documentation**
+   - Update README.md if adding new features
+   - Add Javadoc comments for public APIs
+   - Update examples if needed
+
+#### Working with Schema-Aware Features
+
+##### Adding a New Schema Template
+```java
+// In SchemaTemplates.java
+public static CassandraSchema analyticsSchema(String tableName) {
+    return CassandraSchema.builder(tableName)
+            .addPartitionKeyColumn("tenant_id", "uuid")
+            .addPartitionKeyColumn("metric_name", "text")
+            .addClusteringKeyColumn("timestamp", "timestamp")
+            .addColumn("value", "double")
+            .addColumn("dimensions", "map<text, text>")
+            .addColumn("tags", "set<text>")
+            .build();
+}
+```
+
+##### Adding New CQL Type Support
+```java
+// In TypeMapping.java
+private static void initializeMappings() {
+    // Add your custom type mapping
+    mapType(YourCustomType.class, "frozen<your_type>", DataTypes.custom("com.example.YourType"));
+}
+```
+
+##### Testing Schema Validation
+```java
+@Test
+void shouldValidateSchemaCompatibility() {
+    CassandraSchema sourceSchema = createSourceSchema();
+    CassandraSchema targetSchema = createTargetSchema();
+
+    ValidationResult result = SchemaValidation.validateSchemaCompatibility(sourceSchema, targetSchema);
+
+    assertThat(result.valid()).isTrue();
+    assertThat(result.errors()).isEmpty();
+}
+```
+
+#### Docker Testing Guidelines
+
+##### Running Integration Tests
+```bash
+# Start test containers
+docker-compose -f examples/schema-aware-word-count/docker-compose.yml up -d
+
+# Run integration tests
+./gradlew intTest --tests "*TypedSchemaStorePerformanceTest*"
+
+# Clean up
+docker-compose -f examples/schema-aware-word-count/docker-compose.yml down
+```
+
+##### Testcontainers Configuration
+```java
+@Container
+private static final CassandraContainer cassandra = new CassandraContainer("cassandra:4.1")
+        .withExposedPorts(9042)
+        .withInitScript("schema.cql");
+
+@Container
+private static final KafkaContainer kafka = new KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:7.4.0"))
+        .withEmbeddedZookeeper();
+```
+
+#### Code Style Guidelines
+
+##### Modern Java Patterns
+- Use **records** for immutable data classes
+- Use **text blocks** for multi-line strings
+- Use **switch expressions** instead of switch statements
+- Use **pattern matching instanceof** where applicable
+- Prefer **streams** over traditional loops
+
+##### Example: Modern Java Implementation
+```java
+// ✅ Modern approach
+public record ColumnDefinition(
+        String name,
+        String cqlType,
+        boolean isPrimaryKey,
+        boolean isPartitionKey,
+        boolean isClusteringKey
+) {
+    public ColumnDefinition {
+        if (name == null || name.isBlank()) {
+            throw new IllegalArgumentException("Column name cannot be null or blank");
+        }
+    }
+}
+
+// ❌ Avoid old patterns
+public class ColumnDefinition {
+    private final String name;
+    private final String cqlType;
+    // ... 50+ lines of boilerplate
+}
+```
+
+##### Naming Conventions
+- Use `camelCase` for methods and variables
+- Use `PascalCase` for classes and records
+- Use descriptive names: `wordCountSchema` not `wcs`
+- Use `isValid()`, `hasColumn()` for boolean methods
+- Use `getColumn()`, `createSchema()` for getters/factories
+
+#### Testing Best Practices
+
+##### Unit Testing Schema Features
+```java
+@Test
+void shouldCreateValidSchemaWithAllColumnTypes() {
+    CassandraSchema schema = CassandraSchema.builder("test_table")
+            .addPartitionKeyColumn("pk", "uuid")
+            .addClusteringKeyColumn("ck", "timestamp")
+            .addColumn("text_col", "text")
+            .addColumn("int_col", "int")
+            .addColumn("bool_col", "boolean")
+            .addColumn("decimal_col", "decimal")
+            .build();
+
+    assertThat(schema.getColumns()).hasSize(6);
+    assertThat(schema.getPrimaryKeyColumns()).hasSize(2);
+    assertThat(schema.getRegularColumns()).hasSize(4);
+}
+```
+
+##### Integration Testing Schema Validation
+```java
+@Test
+void shouldValidateTopicAgainstSchema() {
+    // Given
+    CassandraSchema schema = SchemaTemplates.wordCountSchema("word_counts");
+    String topicName = "word-input";
+
+    // Produce test data
+    produceTestData(topicName);
+
+    // When
+    ValidationResult result = TopicSchemaValidator.validateTopic(
+            consumer, topicName, schema, keyDeserializer, valueDeserializer, 100);
+
+    // Then
+    assertThat(result.valid()).isTrue();
+}
+```
+
+##### Performance Testing
+```java
+@Test
+void shouldPerformQueriesFasterWithSchemaAwareness() {
+    // Setup
+    CassandraSchema schema = SchemaTemplates.wordCountSchema("perf_test");
+    KeyValueStore<String, Long> typedStore = createTypedStore(schema);
+    KeyValueStore<Bytes, byte[]> blobStore = createBlobStore();
+
+    // Populate with test data
+    populateTestData(typedStore, blobStore, 10000);
+
+    // Benchmark typed store
+    long typedTime = benchmarkQuery(() -> typedStore.get("test_word"));
+
+    // Benchmark blob store
+    long blobTime = benchmarkQuery(() -> blobStore.get(Bytes.wrap("test_word".getBytes())));
+
+    // Assert performance improvement
+    assertThat(typedTime).isLessThan(blobTime);
+}
+```
+
+#### Contributing Schema Templates
+
+##### Template Design Guidelines
+- **Use meaningful names**: `userProfileSchema`, not `ups`
+- **Include all common fields**: partition keys, timestamps, etc.
+- **Document field purposes**: Javadoc for each field
+- **Provide examples**: Usage examples in doc comments
+- **Test thoroughly**: Unit tests for each template
+
+##### Example Template Contribution
+```java
+/**
+ * Creates a schema for e-commerce product data.
+ * Includes catalog information, pricing, and inventory.
+ *
+ * <p>Example usage:
+ * <pre>{@code
+ * CassandraSchema productSchema = SchemaTemplates.productCatalogSchema("products");
+ * KeyValueStore<String, Product> store = CassandraStores.builder(session, "products")
+ *     .withSchema(productSchema)
+ *     .partitionedKeyValueStore();
+ * }</pre>
+ */
+public static CassandraSchema productCatalogSchema(String tableName) {
+    return CassandraSchema.builder(tableName)
+            .addPartitionKeyColumn("category", "text")
+            .addClusteringKeyColumn("product_id", "uuid")
+            .addColumn("name", "text")
+            .addColumn("description", "text")
+            .addColumn("price", "decimal")
+            .addColumn("currency", "text")
+            .addColumn("inventory_count", "int")
+            .addColumn("tags", "set<text>")
+            .addColumn("created_at", "timestamp")
+            .addColumn("updated_at", "timestamp")
+            .build();
+}
+```
 
 ### Improving The Documentation
-<!-- TODO
-Updating, improving and correcting the documentation
 
--->
+#### Documentation Areas That Need Attention
+
+##### README.md Enhancements
+- **API Reference Section**: Add detailed method signatures and parameter descriptions
+- **Troubleshooting Guide**: Common issues and solutions
+- **Performance Tuning**: Advanced configuration options
+- **Migration Cookbook**: Step-by-step migration recipes
+
+##### Javadoc Improvements
+- **Complete Coverage**: Ensure all public APIs have comprehensive Javadoc
+- **Usage Examples**: Include code examples in method documentation
+- **Performance Notes**: Document performance characteristics
+- **Thread Safety**: Document concurrency guarantees
+
+##### Example Enhancements
+- **Complete Applications**: Full end-to-end examples
+- **Configuration Variations**: Different deployment scenarios
+- **Monitoring Integration**: How to integrate with monitoring systems
+
+#### Documentation Standards
+
+##### README Structure
+```
+## Overview
+## 🚀 Schema-Aware State Stores (New!)
+## Usage
+## 📚 API Reference
+## 🔧 Configuration
+## 🚀 Performance & Tuning
+## 🔄 Migration Guide
+## 🐛 Troubleshooting
+## 🤝 Contributing
+## 📄 License
+```
+
+##### Code Example Standards
+- **Copy-paste ready**: All examples should work as-is
+- **Gradually complex**: Start simple, build to advanced
+- **Well-commented**: Explain each step
+- **Error handling**: Include proper exception handling
+- **Best practices**: Follow established patterns
+
+##### Javadoc Standards
+```java
+/**
+ * Validates that a topic conforms to the specified schema.
+ *
+ * <p>This method performs comprehensive validation by sampling records
+ * from the topic and checking them against the schema definition.
+ * Validation includes type compatibility, required fields, and
+ * data format correctness.</p>
+ *
+ * <p>Example usage:
+ * <pre>{@code
+ * ValidationResult result = TopicSchemaValidator.validateTopic(
+ *     consumer, "user-events", userSchema,
+ *     stringDeserializer, userDeserializer, 1000);
+ *
+ * if (!result.valid()) {
+ *     throw new IllegalStateException("Schema validation failed: " +
+ *         result.message());
+ * }
+ * }</pre></p>
+ *
+ * @param consumer the Kafka consumer to use for sampling
+ * @param topicName the name of the topic to validate
+ * @param schema the schema to validate against
+ * @param keyDeserializer deserializer for message keys
+ * @param valueDeserializer deserializer for message values
+ * @param sampleSize number of records to sample (recommended: 100-1000)
+ * @return validation result with success/failure and error details
+ * @throws IllegalArgumentException if any parameter is null or invalid
+ * @since 2.0.0
+ */
+public static ValidationResult validateTopic(...)
+```
+
+### Styleguides
+
+#### Code Style Guidelines
+
+##### Java Language Features
+- **Java 17+**: Target modern Java features
+- **Records**: Use for immutable data classes
+- **Text Blocks**: Use for multi-line strings
+- **Switch Expressions**: Prefer over switch statements
+- **Pattern Matching**: Use instanceof with pattern variables
+- **Streams API**: Prefer functional style over imperative loops
+
+##### Naming Conventions
+- **Classes**: `PascalCase` (e.g., `CassandraSchema`, `ColumnDefinition`)
+- **Methods**: `camelCase` (e.g., `getColumn()`, `validateSchema()`)
+- **Constants**: `UPPER_SNAKE_CASE` (e.g., `DEFAULT_TABLE_NAME_FN`)
+- **Packages**: `lowercase` (e.g., `dev.thriving.oss.kafka.streams.cassandra.state.store`)
+- **Test Methods**: `shouldDoSomething` or `testSomething`
+
+##### File Organization
+```
+src/main/java/
+├── schema/           # Schema-related classes
+├── repo/             # Repository implementations
+│   └── typed/        # Type-safe implementations
+├── utils/            # Utility classes
+└── examples/         # Example applications
+
+src/test/java/        # Unit tests
+src/intTest/java/     # Integration tests
+```
+
+#### Commit Messages
+
+##### Format
+```
+<type>(<scope>): <description>
+
+[optional body]
+
+[optional footer]
+```
+
+##### Types
+- **feat**: New feature
+- **fix**: Bug fix
+- **docs**: Documentation changes
+- **style**: Code style changes (formatting, etc.)
+- **refactor**: Code refactoring
+- **test**: Adding or fixing tests
+- **chore**: Maintenance tasks
+
+##### Examples
+```bash
+feat(schema): add support for custom CQL types
+fix(validation): handle null values in schema validation
+docs(readme): update migration guide with examples
+test(schema): add performance tests for typed stores
+refactor(repo): modernize repository with records and streams
+```
+
+##### Scope Guidelines
+- **schema**: Schema-related changes
+- **repo**: Repository implementations
+- **validation**: Validation logic
+- **store**: Store implementations
+- **test**: Testing infrastructure
+- **docs**: Documentation
+- **build**: Build system changes
+
+### Commit Messages
+
+#### Good Commit Messages
+```bash
+feat(schema): add support for frozen collections in schema templates
+
+- Add frozen<list<type>> and frozen<set<type>> support
+- Update TypeMapping to handle frozen collections
+- Add tests for frozen collection validation
+
+Closes #123
+```
+
+#### Bad Commit Messages
+```bash
+fix bug
+update code
+add stuff
+```
+
+#### Commit Message Guidelines
+- **Subject line**: 50 characters or less
+- **Body**: Explain what and why, not how
+- **Footer**: Reference issues with "Closes #123"
+- **Imperative mood**: "Add feature" not "Added feature"
+- **Separate concerns**: One logical change per commit
+
+### Schema Design Guidelines
+
+#### Column Naming
+- Use `snake_case` for Cassandra column names
+- Use `camelCase` for Java field names
+- Be descriptive: `user_id` not `uid`, `created_at` not `ts`
+
+#### Primary Key Design
+- **Partition Keys**: Distribute data evenly across nodes
+- **Clustering Keys**: Enable efficient range queries
+- **Composite Keys**: Balance distribution and query patterns
+
+#### Data Type Selection
+- **Text**: For variable-length strings
+- **UUID**: For unique identifiers
+- **Timestamp**: For time-based data
+- **Decimal**: For precise financial calculations
+- **Collections**: For variable-length lists/sets/maps
+
+#### Schema Evolution
+- **Additive Changes**: Safe to add new columns
+- **Compatible Types**: Can change int to bigint, text to varchar
+- **Breaking Changes**: Require migration scripts
+- **Versioning**: Consider schema versioning for complex changes
+
+### Testing Guidelines
+
+#### Test Categories
+- **Unit Tests**: Test individual components in isolation
+- **Integration Tests**: Test component interactions
+- **Performance Tests**: Benchmark operations
+- **Compatibility Tests**: Test with different Cassandra/Kafka versions
+
+#### Test Naming
+```java
+@Test
+void shouldValidateSchemaWithAllSupportedTypes()
+
+@Test
+void shouldThrowExceptionWhenSchemaIsInvalid()
+
+@Test
+void shouldHandleEdgeCaseWithNullValues()
+
+@Test
+void shouldPerformQueriesWithinTimeLimit()
+```
+
+#### Test Structure
+```java
+@DisplayName("Schema Validation")
+class SchemaValidationTest {
+
+    @Nested
+    @DisplayName("Valid Schemas")
+    class ValidSchemas {
+
+        @Test
+        @DisplayName("should accept schema with all supported column types")
+        void shouldAcceptValidSchema() {
+            // Test implementation
+        }
+    }
+
+    @Nested
+    @DisplayName("Invalid Schemas")
+    class InvalidSchemas {
+
+        @Test
+        @DisplayName("should reject schema with duplicate column names")
+        void shouldRejectDuplicateColumns() {
+            // Test implementation
+        }
+    }
+}
+```
+
+#### Test Data Guidelines
+- **Realistic Data**: Use representative data sizes and patterns
+- **Edge Cases**: Test null values, empty collections, special characters
+- **Performance Data**: Use sufficient data for meaningful performance tests
+- **Cleanup**: Ensure test data is properly cleaned up
+
+### Performance Testing
+
+#### Benchmark Categories
+- **Query Performance**: Measure query latency and throughput
+- **Memory Usage**: Monitor heap usage and garbage collection
+- **CPU Utilization**: Track CPU usage during operations
+- **Network Traffic**: Measure data transfer volumes
+
+#### Benchmark Tools
+```java
+@Benchmark
+@BenchmarkMode(Mode.AverageTime)
+@OutputTimeUnit(TimeUnit.MILLISECONDS)
+public void benchmarkTypedStoreQuery() {
+    // Benchmark implementation
+}
+
+@Benchmark
+@BenchmarkMode(Mode.Throughput)
+@OutputTimeUnit(TimeUnit.SECONDS)
+public void benchmarkStoreThroughput() {
+    // Throughput benchmark
+}
+```
+
+#### Performance Baselines
+- **Latency Targets**: Query response time < 10ms for 95th percentile
+- **Throughput Targets**: 1000+ operations/second
+- **Memory Targets**: < 100MB heap usage for 10K records
+- **Scalability**: Linear performance scaling with data size
+
+### Code Review Guidelines
+
+#### Review Checklist
+- [ ] **Functionality**: Does the code work as intended?
+- [ ] **Tests**: Are there sufficient tests? Do they pass?
+- [ ] **Documentation**: Is the code well-documented?
+- [ ] **Style**: Does it follow project conventions?
+- [ ] **Performance**: Are there any performance concerns?
+- [ ] **Security**: Are there any security implications?
+- [ ] **Maintainability**: Is the code easy to understand and maintain?
+
+#### Review Comments
+- **Be specific**: Reference line numbers and suggest concrete fixes
+- **Explain reasoning**: Why is this change needed?
+- **Suggest alternatives**: If there are multiple approaches
+- **Acknowledge good work**: Positive feedback is important
+- **Mentor**: Help contributors learn and improve
+
+#### Code Review Process
+1. **Automated Checks**: Run CI/CD pipeline
+2. **Self Review**: Author reviews their own code
+3. **Peer Review**: At least one team member reviews
+4. **Approval**: Required approvals before merge
+5. **Merge**: Squash or rebase as appropriate
+
+### Release Process
+
+#### Version Numbering
+- **Major**: Breaking changes (2.x.x)
+- **Minor**: New features (x.3.x)
+- **Patch**: Bug fixes (x.x.4)
+- **Pre-release**: Alpha/beta/rc suffixes
+
+#### Release Checklist
+- [ ] All tests pass
+- [ ] Documentation updated
+- [ ] Performance benchmarks run
+- [ ] Compatibility tested
+- [ ] Security review completed
+- [ ] Release notes written
+- [ ] Artifacts published to Maven Central
+
+#### Release Notes Format
+```markdown
+## [2.1.0] - 2024-01-15
+
+### Added
+- Schema-aware state stores with type safety
+- Support for custom CQL types
+- Performance improvements for interactive queries
+
+### Changed
+- Updated to Java 17 baseline
+- Modernized API with records and text blocks
+
+### Fixed
+- Memory leak in validation logic
+- Incorrect error messages in edge cases
+
+### Performance
+- 3.3x faster query performance
+- 60% reduction in memory usage
+```
 
 ## Styleguides
 ### Commit Messages
